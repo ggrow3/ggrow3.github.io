@@ -1,1 +1,1187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neuro-Adversarial Suite v3.12</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+                    colors: { primary: '#3b82f6' },
+                    animation: { 'spin-slow': 'spin 2s linear infinite' }
+                }
+            }
+        }
+    </script>
+    <style>
+        [v-cloak] { display: none; }
+        .smooth-scroll { scroll-behavior: smooth; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .sticky-col-header { position: sticky; top: 0; z-index: 30; }
+        .sticky-row-header { position: sticky; left: 0; z-index: 20; }
+        .sticky-corner { position: sticky; top: 0; left: 0; z-index: 40; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(-5px); }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans h-screen flex flex-col overflow-hidden">
 
+<div id="app" v-cloak class="flex-1 flex flex-col h-full relative">
+
+    <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-50 flex-shrink-0">
+        <div class="flex items-center gap-6">
+            <div class="flex items-center gap-3">
+                <div class="bg-indigo-600 text-white p-2 rounded-lg shadow-sm shadow-indigo-200">
+                    <i class="fa-solid fa-brain text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-slate-800 tracking-tight text-lg leading-none">LLM Eval <span class="text-indigo-600">3.12</span></h1>
+                    <span class="text-[10px] text-slate-500 font-medium">Adversarial Research Suite</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-3">
+            <div class="relative">
+                <button @click="isJudgeMenuOpen = !isJudgeMenuOpen" 
+                        :class="['flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors uppercase tracking-wide', isJudgeMenuOpen ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300']">
+                    <i class="fa-solid fa-gavel"></i>
+                    <span>{{ selectedJudgeIds.length }} Judges</span>
+                    <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                </button>
+                <div v-if="isJudgeMenuOpen" @click="isJudgeMenuOpen = false" class="fixed inset-0 z-40 cursor-default"></div>
+                <transition name="fade">
+                    <div v-if="isJudgeMenuOpen" class="absolute right-0 top-full mt-2 w-64 bg-white rounded-lg shadow-xl border border-slate-200 p-1 z-50">
+                        <div class="px-3 py-2 border-b border-slate-100 mb-1"><span class="text-xs font-bold text-slate-500 uppercase">Select Auto-Judges</span></div>
+                        <div class="max-h-64 overflow-y-auto p-2 space-y-1">
+                            <label v-for="model in llmConfigurations" :key="'judge-'+model.id" class="flex items-center gap-3 p-2 hover:bg-slate-50 rounded cursor-pointer select-none">
+                                <input type="checkbox" :value="model.id" v-model="selectedJudgeIds" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                                <span class="text-sm font-medium text-slate-700 truncate">{{ model.name }}</span>
+                            </label>
+                            <div v-if="llmConfigurations.length === 0" class="text-xs text-slate-400 p-2 text-center">No models available</div>
+                        </div>
+                    </div>
+                </transition>
+            </div>
+
+            <div class="hidden md:flex bg-slate-100 p-1 rounded-lg border border-slate-200 mr-2">
+                <button @click="activeView = 'runner'" :class="['px-4 py-1.5 text-sm font-medium rounded-md transition-all', activeView === 'runner' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700']"><i class="fa-solid fa-play mr-2"></i>Runner</button>
+                <button @click="activeView = 'assessment'" :class="['px-4 py-1.5 text-sm font-medium rounded-md transition-all', activeView === 'assessment' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700']"><i class="fa-solid fa-table-cells mr-2"></i>Matrix</button>
+                <button @click="activeView = 'history'" :class="['px-4 py-1.5 text-sm font-medium rounded-md transition-all', activeView === 'history' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700']"><i class="fa-solid fa-clock-rotate-left mr-2"></i>History</button>
+            </div>
+
+            <button @click="showModelModal = true" class="text-xs font-medium text-slate-600 hover:text-indigo-600 px-3 py-1.5 rounded-md hover:bg-indigo-50 transition-colors border border-transparent hover:border-indigo-100"><i class="fa-solid fa-key mr-1"></i> Config</button>
+
+            <div class="relative">
+                <button @click="isModelMenuOpen = !isModelMenuOpen" :class="['flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-lg transition-colors border', isModelMenuOpen ? 'bg-slate-200 text-slate-900 border-slate-300' : 'text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border-slate-200']">
+                    <i class="fa-solid fa-robot text-slate-400"></i>
+                    <span>{{ selectedModelIds.length }} Models</span>
+                    <i :class="['fa-solid text-xs ml-1 transition-transform', isModelMenuOpen ? 'fa-chevron-up rotate-180' : 'fa-chevron-down']"></i>
+                </button>
+                <div v-if="isModelMenuOpen" @click="isModelMenuOpen = false" class="fixed inset-0 z-40 cursor-default"></div>
+                <transition name="fade">
+                    <div v-if="isModelMenuOpen" class="absolute right-0 top-full mt-2 w-72 bg-white rounded-lg shadow-xl border border-slate-200 p-1 z-50">
+                        <div class="px-3 py-2 border-b border-slate-100 mb-1 flex justify-between items-center"><span class="text-xs font-bold text-slate-500 uppercase">Select Target Models</span><button @click="isModelMenuOpen = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button></div>
+                        <div class="max-h-64 overflow-y-auto p-2 space-y-1">
+                            <label v-for="model in llmConfigurations" :key="model.id" class="flex items-center gap-3 p-2 hover:bg-slate-50 rounded cursor-pointer group/item select-none">
+                                <input type="checkbox" :value="model.id" v-model="selectedModelIds" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-2 h-2 rounded-full flex-shrink-0" :style="{ backgroundColor: model.color }"></div>
+                                        <span class="text-sm font-medium text-slate-700 truncate">{{ model.name }}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center mt-1">
+                                        <span class="text-[10px] text-slate-400 uppercase">{{ model.provider }}</span>
+                                        <i v-if="connectionStatus[model.id]?.success" class="fa-solid fa-check-circle text-emerald-500 text-xs"></i>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </transition>
+            </div>
+        </div>
+    </header>
+
+    <div v-if="isLoadingDB" class="fixed inset-0 bg-white z-[999] flex flex-col items-center justify-center">
+        <i class="fa-solid fa-database text-4xl text-indigo-500 animate-bounce mb-4"></i>
+        <h2 class="text-lg font-bold text-slate-800">Initializing Database...</h2>
+        <p v-if="gistStatus" class="mt-2 text-xs text-slate-500 font-mono">{{ gistStatus }}</p>
+    </div>
+
+    <transition name="fade">
+        <div v-if="toastMessage" class="fixed bottom-6 right-6 bg-slate-800 text-white px-4 py-3 rounded-lg shadow-lg z-[1000] flex items-center gap-3 text-sm font-medium">
+            <i class="fa-solid fa-circle-info text-indigo-400"></i> {{ toastMessage }}
+        </div>
+    </transition>
+
+    <div v-if="activeView === 'runner'" class="flex-1 flex overflow-hidden animate-fade-in">
+        <aside :class="['bg-white border-r border-slate-200 flex flex-col z-10 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] transition-all duration-300', isSidebarCollapsed ? 'w-12' : 'w-80 md:w-96']">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-white h-16 flex-shrink-0">
+                <div v-if="!isSidebarCollapsed" class="font-bold text-sm text-slate-500 uppercase tracking-wide truncate">Research Cases ({{ filteredTestCases.length }})</div>
+                <button @click="isSidebarCollapsed = !isSidebarCollapsed" class="text-slate-400 hover:text-indigo-600 transition-colors mx-auto"><i :class="['fa-solid', isSidebarCollapsed ? 'fa-angles-right' : 'fa-angles-left']"></i></button>
+            </div>
+            <div v-if="!isSidebarCollapsed" class="flex-1 flex flex-col overflow-hidden">
+               <div class="px-4 pb-4 space-y-3 bg-white border-b border-slate-100">
+                    <div class="relative"><i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-sm"></i><input v-model="searchQuery" type="text" placeholder="Search..." class="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"></div>
+                    <div class="flex gap-2">
+                        <select v-model="filterCategory" class="flex-1 bg-slate-50 border border-slate-200 text-xs rounded-md px-2 py-1.5 outline-none cursor-pointer"><option value="">All Categories</option><option v-for="cat in uniqueCategories" :value="cat">{{ cat }}</option></select>
+                        <button @click="openAddTestModal" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 shadow-sm transition-colors"><i class="fa-solid fa-plus"></i> New</button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto">
+                    <div v-for="tc in filteredTestCases" :key="tc.id" @click="selectTestCase(tc)" :class="['p-4 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors group', selectedTest?.id === tc.id ? 'bg-indigo-50/50 border-l-4 border-l-indigo-600' : 'border-l-4 border-l-transparent']">
+                        <div class="flex justify-between items-start mb-1"><span class="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{{ tc.id }}</span><div class="flex items-center gap-2"><i v-if="runningTestIds.includes(tc.id)" class="fa-solid fa-circle-notch fa-spin text-indigo-500 text-xs"></i><span :class="['text-[10px] uppercase font-bold px-1.5 py-0.5 rounded tracking-wide', difficultyBadge(tc.difficulty)]">{{ tc.difficulty }}</span></div></div>
+                        <h3 :class="['text-sm font-medium mb-1 leading-snug group-hover:text-indigo-700', selectedTest?.id === tc.id ? 'text-indigo-900' : 'text-slate-700']">{{ tc.name }}</h3>
+                        <div class="flex flex-wrap gap-1 mt-2"><span v-for="tag in (tc.tags || []).slice(0,3)" class="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">#{{tag}}</span></div>
+                    </div>
+                </div>
+            </div>
+            <div v-else class="flex-1 overflow-y-auto py-2 flex flex-col items-center gap-2 bg-slate-50/50">
+                <div v-for="tc in filteredTestCases" :key="tc.id" @click="selectTestCase(tc)" :title="tc.name" :class="['w-8 h-8 rounded flex items-center justify-center cursor-pointer transition-all text-xs font-bold', selectedTest?.id === tc.id ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-200 hover:border-indigo-300 hover:text-indigo-500']">{{ tc.id.split('-')[1] || '?' }}</div>
+            </div>
+        </aside>
+
+      <main class="flex-1 flex flex-col bg-slate-50/50 overflow-hidden relative">
+            <div v-if="!selectedTest" class="flex-1 flex flex-col items-center justify-center text-slate-400 p-6 text-center">
+                <i class="fa-solid fa-brain text-4xl mb-4 text-slate-300"></i>
+                <h2 class="text-lg font-medium text-slate-600">Select a Research Case</h2>
+                <p class="text-sm text-slate-400 max-w-xs mt-2">Choose a test from the sidebar to evaluate model performance.</p>
+            </div>
+            
+            <div v-else class="flex flex-col h-full overflow-hidden w-full relative">
+                
+                <div class="bg-white border-b border-slate-200 px-6 py-4 flex-shrink-0 z-20 flex justify-between items-center shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Target Models</div>
+                        <div class="flex items-center gap-2">
+                             <div class="flex -space-x-1.5 overflow-hidden py-0.5">
+                                <div v-for="mid in selectedModelIds.slice(0, 5)" class="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[10px] text-white font-bold shadow-sm" :style="{ backgroundColor: getModelColor(mid) }">{{ mid.charAt(0).toUpperCase() }}</div>
+                            </div>
+                            <span v-if="selectedModelIds.length === 0" class="text-xs text-red-500 font-medium">No models selected</span>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-4">
+                        <div class="hidden lg:flex flex-col items-end mr-2">
+                            <span class="text-xs font-bold text-slate-700 max-w-[200px] truncate">{{ selectedTest.name }}</span>
+                            <span class="text-[10px] text-slate-400 font-mono">{{ selectedTest.id }}</span>
+                        </div>
+
+                        <div v-if="selectedJudgeIds.length > 0" class="text-xs text-indigo-600 font-bold bg-indigo-50 px-3 py-1.5 rounded-md border border-indigo-100 flex items-center gap-2">
+                            <i class="fa-solid fa-gavel"></i> {{ selectedJudgeIds.length }} Judges
+                        </div>
+                        
+                        <button @click="executeTest(selectedTest)" :disabled="runningTestIds.includes(selectedTest.id) || selectedModelIds.length === 0" class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-md shadow-indigo-600/10 transition-all flex items-center gap-2">
+                            <i v-if="runningTestIds.includes(selectedTest.id)" class="fa-solid fa-circle-notch fa-spin"></i>
+                            <i v-else class="fa-solid fa-bolt"></i>
+                            {{ runningTestIds.includes(selectedTest.id) ? 'Running...' : 'Run Test' }}
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex-1 overflow-y-auto smooth-scroll p-6 md:p-10 w-full">
+                    <div class="max-w-5xl mx-auto space-y-8 pb-20">
+                        
+                        <div>
+                            <div class="flex items-center gap-3 mb-4">
+                                <span class="text-xs font-bold font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded">{{ selectedTest.id }}</span>
+                                <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 uppercase tracking-wide">{{ selectedTest.category }}</span>
+                                
+                                <div class="ml-auto flex gap-2">
+                                    <button @click="openEditTestModal" class="text-xs font-medium text-slate-500 hover:text-indigo-600 px-3 py-1.5 hover:bg-white rounded-md border border-transparent hover:border-slate-200 transition-all flex items-center gap-1.5"><i class="fa-solid fa-pen"></i> Edit</button>
+                                    <button @click="deleteTest(selectedTest.id)" class="text-xs font-medium text-red-400 hover:text-red-600 px-3 py-1.5 hover:bg-white rounded-md border border-transparent hover:border-red-100 transition-all flex items-center gap-1.5"><i class="fa-regular fa-trash-can"></i> Delete</button>
+                                </div>
+                            </div>
+
+                            <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-6">{{ selectedTest.name }}</h2>
+
+                            <div v-if="getResearchTitle(selectedTest)" class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm mb-8 flex flex-col md:flex-row gap-6 relative overflow-hidden">
+                                <div class="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                                
+                                <div class="hidden md:flex flex-col items-center justify-center w-12 flex-shrink-0">
+                                    <div class="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+                                        <i class="fa-solid fa-graduation-cap text-lg"></i>
+                                    </div>
+                                </div>
+
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex flex-col md:flex-row md:items-baseline gap-2 mb-2">
+                                        <h3 class="text-lg font-bold text-slate-800 leading-snug">{{ getResearchTitle(selectedTest) }}</h3>
+                                        <span v-if="getResearchYear(selectedTest)" class="text-sm font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{{ getResearchYear(selectedTest) }}</span>
+                                    </div>
+                                    
+                                    <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600 mb-3">
+                                        <span v-if="getResearchAuthor(selectedTest)" class="flex items-center gap-2"><i class="fa-solid fa-user-pen text-slate-400"></i> {{ getResearchAuthor(selectedTest) }}</span>
+                                        <a v-if="getResearchUrl(selectedTest)" :href="getResearchUrl(selectedTest)" target="_blank" class="flex items-center gap-1 text-indigo-600 hover:text-indigo-800 hover:underline font-medium"><i class="fa-solid fa-link"></i> View Source</a>
+                                    </div>
+
+                                    <div v-if="getResearchModels(selectedTest).length > 0" class="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+                                        <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Original Study Targets:</span>
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <span v-for="m in getResearchModels(selectedTest)" class="text-[10px] font-mono font-medium text-slate-600 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded">{{ m }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden group">
+                            <div class="bg-slate-50/50 px-5 py-3 border-b border-slate-200 flex justify-between items-center">
+                                <span class="text-xs font-bold text-slate-500 uppercase tracking-wider"><i class="fa-regular fa-message mr-2"></i> Prompt / Question</span>
+                                <button @click="copyPrompt" class="text-xs font-medium text-slate-400 hover:text-indigo-600 transition-colors opacity-0 group-hover:opacity-100"><i class="fa-regular fa-copy"></i> Copy</button>
+                            </div>
+                            <div class="p-6 font-mono text-sm text-slate-800 whitespace-pre-wrap leading-relaxed bg-white">{{ getPromptText(selectedTest) }}</div>
+                        </div>
+                        
+                        <div v-if="results[selectedTest.id]" class="space-y-6 animate-fade-in border-t border-slate-200 pt-8">
+                            <div class="flex justify-between items-center"><h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider">Model Results</h3></div>
+                            <div class="grid gap-6">
+                                <div v-for="res in results[selectedTest.id]" :key="res.modelId" class="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden ring-1 ring-slate-900/5">
+                                    <div class="px-5 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-3 h-3 rounded-full shadow-sm" :style="{ backgroundColor: getModelColor(res.modelId) }"></div>
+                                            <span class="font-bold text-sm text-slate-800">{{ res.modelName }}</span>
+                                            <span v-if="res.error" class="bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold">ERROR</span>
+                                        </div>
+                                        <div class="flex items-center gap-3">
+                                             <span class="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{{ res.latency }}ms</span>
+                                             <button @click="openOverrideModal(res)" :class="['text-xs font-bold px-3 py-1 rounded-md border flex items-center gap-1.5 cursor-pointer hover:opacity-80 select-none transition-colors shadow-sm', res.isCorrect ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200']">
+                                                 <i :class="res.isCorrect ? 'fa-solid fa-check' : 'fa-solid fa-xmark'"></i> {{ res.isCorrect ? 'Pass' : 'Fail' }}
+                                             </button>
+                                        </div>
+                                    </div>
+                                    <div class="p-5">
+                                        <p v-if="res.error" class="text-sm text-red-600 font-mono bg-red-50 p-3 rounded border border-red-100">{{ res.response }}</p>
+                                        <div v-else class="text-sm text-slate-700 leading-7 font-mono whitespace-pre-wrap">{{ res.response }}</div>
+                                        
+                                        <div v-if="res.judgeDetails && res.judgeDetails.length > 0" class="mt-5 pt-4 border-t border-slate-100">
+                                            <h5 class="text-[10px] font-bold text-slate-400 uppercase mb-3 flex items-center gap-2"><i class="fa-solid fa-gavel"></i> AI Judges</h5>
+                                            <div class="grid gap-2">
+                                                <div v-for="jd in res.judgeDetails" :key="jd.judgeId" class="text-xs bg-slate-50 p-3 rounded-md border border-slate-200 flex flex-col gap-2 relative group hover:border-slate-300 transition-colors">
+                                                    <div class="flex items-center justify-between">
+                                                        <div class="flex items-center gap-2">
+                                                            <div :class="['w-1.5 h-1.5 rounded-full', jd.pass ? 'bg-emerald-500' : 'bg-red-500']"></div>
+                                                            <span class="font-bold text-slate-700">{{ jd.judgeName }}</span>
+                                                            <span :class="['text-[10px] uppercase font-bold px-1.5 rounded', jd.pass ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700']">{{ jd.pass ? 'Pass' : 'Fail' }}</span>
+                                                        </div>
+                                                        <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white px-1 rounded shadow-sm border border-slate-100">
+                                                             <button @click="rateJudge(res, jd, true)" :class="['w-6 h-6 rounded flex items-center justify-center transition-colors', jd.humanRating === true ? 'text-emerald-600' : 'text-slate-300 hover:text-emerald-500']" title="Judge is Correct"><i class="fa-solid fa-thumbs-up"></i></button>
+                                                             <button @click="rateJudge(res, jd, false)" :class="['w-6 h-6 rounded flex items-center justify-center transition-colors', jd.humanRating === false ? 'text-red-600' : 'text-slate-300 hover:text-red-500']" title="Judge is Incorrect"><i class="fa-solid fa-thumbs-down"></i></button>
+                                                        </div>
+                                                    </div>
+                                                    <p class="text-slate-600 pl-3.5 border-l-2 border-slate-200">{{ jd.reason }}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div v-if="res.manualCritique" class="mt-3 text-xs bg-amber-50 text-amber-800 p-3 rounded border border-amber-200 flex gap-2">
+                                            <i class="fa-solid fa-user-pen mt-0.5"></i>
+                                            <div><strong>Human Critique:</strong> {{ res.manualCritique }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-8 pt-8 border-t border-slate-200 pb-12">
+                            <h4 class="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2"><i class="fa-solid fa-clipboard-check text-indigo-500"></i> Evaluation Criteria</h4>
+                            
+                            <div class="grid grid-cols-1 gap-4">
+                                <div class="bg-slate-50 border border-slate-200 p-4 rounded-lg">
+                                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-2">Evaluation Logic</span>
+                                    <p class="text-sm text-slate-700 leading-relaxed">{{ getReasoning(selectedTest) }}</p>
+                                </div>
+                                <div class="bg-indigo-50 border border-indigo-100 p-4 rounded-lg">
+                                    <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-wide block mb-2">Exact Answer</span>
+                                    <p class="text-sm text-indigo-900 font-medium font-mono">{{ getCorrectAnswer(selectedTest) }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+  <div v-if="activeView === 'assessment'" class="flex-1 flex flex-col bg-white overflow-hidden animate-fade-in relative">
+        <div class="bg-white border-b border-slate-200 px-6 py-4 flex-shrink-0 z-10 flex flex-col gap-4 shadow-sm">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <h2 class="text-lg font-bold text-slate-800">Assessment Matrix</h2>
+                    
+                    <div v-if="globalStats.total > 0" class="flex items-center gap-3 px-3 py-1 bg-slate-100 rounded-full border border-slate-200">
+                        <div class="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+                            <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                            <span>{{ globalStats.total }} Runs</span>
+                        </div>
+                        <div class="w-px h-3 bg-slate-300"></div>
+                        <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-600">
+                            <i class="fa-solid fa-check"></i> {{ globalStats.pass }}
+                        </div>
+                        <div class="flex items-center gap-1.5 text-xs font-bold text-red-600">
+                            <i class="fa-solid fa-xmark"></i> {{ globalStats.fail }}
+                        </div>
+                        <div class="w-px h-3 bg-slate-300"></div>
+                        <span class="text-xs font-black text-indigo-600">{{ globalStats.rate }}% Pass Rate</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 items-center">
+                    <span v-if="isBatchRunning" class="text-xs text-slate-500 font-mono animate-pulse mr-2">Running Batch...</span>
+                    <button v-if="isBatchRunning" @click="stopBatch" class="flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm animate-pulse"><i class="fa-solid fa-stop"></i> Stop</button>
+                    <button v-else @click="runAllOrSelected" :disabled="selectedModelIds.length === 0" class="flex items-center gap-2 px-4 py-2 bg-indigo-600 disabled:bg-slate-300 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"><i class="fa-solid fa-play"></i> {{ selectedMatrixTestIds.size > 0 ? `Run Selected (${selectedMatrixTestIds.size})` : 'Run All Visible' }}</button>
+                    <button @click="clearResults" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors shadow-sm"><i class="fa-regular fa-trash-can"></i> Clear Results</button>
+                    <div class="h-8 w-px bg-slate-200 mx-1"></div>
+                    <button @click="showSnapshotModal = true" class="flex items-center gap-2 px-3 py-2 bg-white border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"><i class="fa-solid fa-camera"></i> Snapshot</button>
+                    <button @click="exportCSV" class="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-900 transition-colors"><i class="fa-solid fa-download"></i> CSV</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-auto bg-slate-50">
+            <table class="w-full border-collapse">
+                <thead class="bg-white shadow-sm sticky-col-header">
+                    <tr>
+                        <th class="p-4 w-96 text-left text-xs font-bold text-slate-500 uppercase tracking-wider bg-white border-b border-r border-slate-200 sticky-corner shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)] z-30">
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" :checked="isAllSelected" @click="toggleSelectAll" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer">
+                                <span>Research Cases</span>
+                            </div>
+                        </th>
+                        
+                        <th v-for="model in llmConfigurations" :key="model.id" class="p-4 min-w-[160px] text-left border-b border-r border-slate-200 bg-white">
+                            <div class="flex items-center gap-2 mb-2">
+                                <div class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="{ backgroundColor: model.color }"></div>
+                                <span class="text-sm font-bold text-slate-700 truncate">{{ model.name }}</span>
+                            </div>
+                            <div class="flex items-center justify-between text-[10px] bg-slate-50 p-1.5 rounded border border-slate-100">
+                                <div class="font-bold text-slate-500">
+                                    <span class="text-emerald-600">{{ getModelStats(model.id).pass }}</span> / <span class="text-red-400">{{ getModelStats(model.id).fail }}</span>
+                                </div>
+                                <div class="font-bold text-indigo-600">{{ getModelStats(model.id).rate }}%</div>
+                            </div>
+                            <div class="w-full bg-slate-100 h-1 mt-1 rounded-full overflow-hidden">
+                                <div class="bg-indigo-500 h-full transition-all duration-500" :style="{ width: getModelStats(model.id).rate + '%' }"></div>
+                            </div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200">
+                    <tr v-for="test in filteredTestCases" :key="test.id" class="hover:bg-slate-50 transition-colors group">
+                        <td class="p-4 w-96 bg-white border-r border-slate-200 sticky-row-header shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)] align-top relative z-20">
+                            <div class="flex gap-3 h-full">
+                                <div class="pt-1"><input type="checkbox" :value="test.id" :checked="selectedMatrixTestIds.has(test.id)" @change="toggleMatrixSelection(test.id)" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"></div>
+                                <div class="flex flex-col justify-center flex-1 min-w-0">
+                                    <button @click="goToTest(test)" class="text-sm font-bold text-indigo-600 hover:text-indigo-800 hover:underline text-left leading-snug mb-1 truncate block w-full" :title="test.name">{{ test.name }}</button>
+                                    <div class="flex items-center gap-2 text-[10px] text-slate-400 mb-2">
+                                        <span class="uppercase tracking-wide font-medium">{{ test.category }}</span>
+                                    </div>
+                                    
+                                    <div v-if="getTestStats(test.id).total > 0" class="flex items-center gap-2 mt-1">
+                                        <div class="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden flex">
+                                            <div class="bg-emerald-400 h-full" :style="{ width: getTestStats(test.id).rate + '%' }"></div>
+                                        </div>
+                                        <span class="text-[10px] font-bold text-slate-500 w-8 text-right">{{ getTestStats(test.id).pass }}/{{ getTestStats(test.id).total }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td v-for="model in llmConfigurations" :key="model.id" class="p-2 border-r border-slate-200 bg-white align-middle text-center h-full relative">
+                            <div v-if="runningTestIds.includes(test.id) && currentRunningModelId === model.id" class="absolute inset-0 bg-indigo-50/50 flex items-center justify-center border-2 border-indigo-400 rounded-lg m-1 z-10">
+                                <i class="fa-solid fa-circle-notch fa-spin text-indigo-600"></i>
+                            </div>
+
+                            <div v-if="getAssessmentResult(test.id, model.id)" class="w-full h-full flex flex-col items-center justify-center p-1">
+                                <div @click="openOverrideModal(getAssessmentResult(test.id, model.id))" :class="['w-full py-2 rounded-lg flex items-center justify-center gap-2 cursor-pointer border transition-all hover:shadow-md', getAssessmentResult(test.id, model.id).isCorrect ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700']">
+                                    <i :class="['text-lg', getAssessmentResult(test.id, model.id).isCorrect ? 'fa-solid fa-check' : 'fa-solid fa-xmark']"></i>
+                                    <span v-if="getAssessmentResult(test.id, model.id).manualCritique" class="text-[10px]"><i class="fa-solid fa-user-pen"></i></span>
+                                </div>
+                                <span class="text-[9px] text-slate-300 font-mono mt-1">{{ getAssessmentResult(test.id, model.id).latency }}ms</span>
+                            </div>
+                            
+                            <div v-else class="w-full h-12 rounded-lg bg-slate-50 border-2 border-dashed border-slate-100 flex items-center justify-center text-slate-200"><span class="text-xs">—</span></div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div v-if="activeView === 'history'" class="flex-1 flex flex-col bg-white overflow-hidden animate-fade-in relative p-8">
+        <h2 class="text-2xl font-bold text-slate-800 mb-6">Run History & Snapshots</h2>
+        <div v-if="snapshots.length === 0" class="text-center text-slate-400 py-10 border-2 border-dashed border-slate-200 rounded-xl"><i class="fa-solid fa-ghost text-3xl mb-3"></i><p>No snapshots saved yet.</p></div>
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto pb-10">
+            <div v-for="snap in snapshots" :key="snap.id" class="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow p-5 flex flex-col">
+                <div class="flex justify-between items-start mb-3">
+                    <div class="flex items-center gap-2">
+                        <div class="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600"><i class="fa-solid fa-camera"></i></div>
+                        <div><h3 class="font-bold text-slate-800">{{ snap.name }}</h3><span class="text-xs text-slate-400">{{ new Date(snap.timestamp).toLocaleString() }}</span></div>
+                    </div>
+                    <button @click="deleteSnapshot(snap.id)" class="text-slate-300 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>
+                </div>
+                <div class="flex-1 space-y-2 mb-4">
+                    <div class="text-xs text-slate-500 flex justify-between border-b border-slate-100 py-1"><span>Total Data</span><span class="font-mono font-bold">{{ Object.values(snap.data).flat().length }}</span></div>
+                    <div class="text-xs text-slate-500 flex justify-between border-b border-slate-100 py-1"><span>Models</span><span class="font-mono">{{ snap.models.length }}</span></div>
+                </div>
+                <button @click="loadSnapshot(snap)" class="w-full py-2 bg-indigo-50 text-indigo-700 font-bold text-sm rounded-lg hover:bg-indigo-100 transition-colors">Load Snapshot</button>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="showAddTestModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" @click.self="showAddTestModal = false">
+        <div class="bg-white w-full max-w-2xl rounded-xl shadow-2xl border border-slate-200 flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-slate-100 bg-slate-50 rounded-t-xl flex justify-between items-center">
+                <div class="flex items-center gap-4">
+                    <h3 class="font-bold text-lg text-slate-800">{{ isEditingTest ? 'Edit Case' : 'Add Case' }}</h3>
+                    
+                    <div v-if="!isEditingTest" class="flex p-1 bg-slate-200 rounded-lg">
+                        <button @click="addMode = 'manual'" :class="['px-3 py-1 text-xs font-bold rounded-md transition-all', addMode === 'manual' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700']">Manual</button>
+                        <button @click="addMode = 'generate'" :class="['px-3 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1', addMode === 'generate' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700']"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Gen</button>
+                    </div>
+                </div>
+                <button @click="showAddTestModal = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-6 space-y-4">
+                
+                <div v-if="addMode === 'generate' && !isEditingTest" class="animate-fade-in space-y-6">
+                    <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-4 flex gap-3 items-start">
+                        <i class="fa-solid fa-lightbulb text-indigo-500 mt-1"></i>
+                        <p class="text-sm text-indigo-800">Use the <strong>{{ selectedModelIds.length > 0 ? llmConfigurations.find(m=>m.id===selectedModelIds[0])?.name : 'first available' }}</strong> model to generate new adversarial cases automatically.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">Topic / Attack Vector</label>
+                        <input v-model="generateTopic" type="text" class="w-full border border-slate-300 rounded-lg px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" placeholder="e.g. Prompt Injection, Hallucination Traps, SQLi..." @keyup.enter="generateStudies">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">Number of Cases to Generate</label>
+                        <input v-model.number="generateCount" type="number" min="1" max="10" class="w-full border border-slate-300 rounded-lg px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" placeholder="3">
+                        <p class="text-[10px] text-slate-400 mt-1">Generate between 1 and 10 cases at once.</p>
+                    </div>
+                </div>
+
+                <div v-else class="space-y-4 animate-fade-in">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 mb-1">Name</label>
+                            <input v-model="newTest.name" type="text" class="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 mb-1">Category</label>
+                            <input v-model="newTest.category" list="categories" type="text" placeholder="Select or type new..." class="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                            <datalist id="categories">
+                                <option v-for="cat in uniqueCategories" :value="cat"></option>
+                            </datalist>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                         <div>
+                            <label class="block text-xs font-bold text-slate-500 mb-1">Difficulty</label>
+                            <select v-model="newTest.difficulty" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white"><option>Easy</option><option>Medium</option><option>Hard</option></select>
+                        </div>
+                         <div>
+                            <label class="block text-xs font-bold text-slate-500 mb-1">Tags (comma separated)</label>
+                            <input v-model="newTest.tagString" type="text" placeholder="logic, math, trick" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">Prompt / Question</label>
+                        <textarea v-model="newTest.prompt" rows="4" class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-indigo-500"></textarea>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 mb-1">Expected Correct Answer</label>
+                            <textarea v-model="newTest.correctAnswer" rows="3" class="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"></textarea>
+                        </div>
+                        <div>
+                             <label class="block text-xs font-bold text-slate-500 mb-1">Rubric / Logic</label>
+                            <textarea v-model="newTest.reasoning" rows="3" class="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="px-6 py-4 border-t border-slate-200 bg-slate-50 rounded-b-xl flex justify-end gap-3">
+                <button @click="showAddTestModal = false" class="px-4 py-2 text-slate-600 font-medium text-sm">Cancel</button>
+                
+                <button v-if="addMode === 'generate' && !isEditingTest" @click="generateStudies" :disabled="isGeneratingTests || !generateTopic" class="px-6 py-2 bg-indigo-600 disabled:bg-indigo-400 text-white text-sm font-bold rounded shadow-sm hover:bg-indigo-700 flex items-center gap-2">
+                    <i v-if="isGeneratingTests" class="fa-solid fa-circle-notch fa-spin"></i>
+                    <i v-else class="fa-solid fa-wand-magic-sparkles"></i>
+                    {{ isGeneratingTests ? 'Generating...' : 'Generate Cases' }}
+                </button>
+                
+                <button v-else @click="saveTest" class="px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded shadow-sm hover:bg-indigo-700">Save Case</button>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="showModelModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" @click.self="showModelModal = false">
+        <div class="bg-white w-full max-w-4xl rounded-xl shadow-2xl border border-slate-200 flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-slate-100 bg-slate-50 rounded-t-xl flex justify-between items-center"><h3 class="font-bold text-lg text-slate-800">Configuration</h3><button @click="showModelModal = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button></div>
+            <div class="flex-1 overflow-y-auto p-6 bg-slate-50/50 space-y-6">
+                
+                <div class="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                    <h4 class="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2"><i class="fa-solid fa-database text-indigo-500"></i> Data Source</h4>
+                    <div class="flex gap-3 items-end">
+                        <div class="flex-1">
+                            <label class="block text-xs font-bold text-slate-500 mb-1">Studies JSON URL (Raw Gist)</label>
+                            <input v-model="studiesURL" type="text" class="w-full border border-slate-300 rounded px-3 py-2 text-xs font-mono text-slate-600" placeholder="https://gist.githubusercontent.com/...">
+                        </div>
+                        <button @click="reloadStudies" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded text-xs font-bold transition-colors flex items-center gap-2 h-[34px]">
+                            <i v-if="isLoadingDB" class="fa-solid fa-circle-notch fa-spin"></i>
+                            <i v-else class="fa-solid fa-rotate"></i> Reload Studies
+                        </button>
+                    </div>
+                    <p class="text-[10px] text-slate-400 mt-2">Paste a raw JSON URL to load research cases dynamically. This setting is saved in your browser.</p>
+                </div>
+
+                <div class="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                    <h4 class="text-sm font-bold text-slate-700 mb-3">{{ isEditingModel ? 'Edit Model' : 'Add New Model' }}</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                        <input v-model="newModel.name" placeholder="Name" class="border border-slate-300 rounded px-3 py-2 text-xs">
+                        <select v-model="newModel.provider" class="border border-slate-300 rounded px-3 py-2 text-xs bg-white"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="google">Google Gemini</option><option value="ollama">Ollama</option></select>
+                        <div class="flex flex-col flex-1">
+                            <div class="flex"><input v-model="newModel.modelId" placeholder="Model ID" class="flex-1 border border-slate-300 rounded-l px-3 py-2 text-xs rounded-br-none"><button @click="fetchModelsForProvider" :disabled="!newModel.apiKey && newModel.provider !== 'ollama'" class="bg-slate-100 hover:bg-slate-200 border-y border-r border-slate-300 rounded-r px-3 text-xs text-slate-600 transition-colors disabled:opacity-50" title="Fetch Models"><i v-if="isFetchingModels" class="fa-solid fa-circle-notch fa-spin"></i><i v-else class="fa-solid fa-cloud-arrow-down"></i></button></div>
+                            <select v-if="fetchedModelList.length > 0" v-model="newModel.modelId" class="mt-1 border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"><option disabled value="">Select fetched model...</option><option v-for="m in fetchedModelList" :value="m">{{ m }}</option></select>
+                        </div>
+                    </div>
+                    <div class="flex gap-3"><input v-model="newModel.apiKey" type="password" placeholder="API Key" class="flex-1 border border-slate-300 rounded px-3 py-2 text-xs"><button @click="addNewModel" class="bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded hover:bg-slate-900">{{ isEditingModel ? 'Update' : 'Add' }}</button></div>
+                </div>
+                <div class="space-y-3">
+                    <div v-for="(model, idx) in llmConfigurations" :key="model.id" class="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col gap-2">
+                        <div class="flex justify-between items-start">
+                            <div><div class="font-bold text-sm text-slate-800">{{ model.name }}</div><div class="text-[10px] text-slate-500 font-mono">{{ model.provider }} • {{ model.modelId }}</div></div>
+                            <div class="flex gap-2">
+                                <button @click="editModel(model)" class="text-slate-400 hover:text-indigo-600 px-1"><i class="fa-solid fa-pen"></i></button>
+                                <button @click="deleteModel(idx)" class="text-slate-400 hover:text-red-500 px-1"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center mt-1 border-t border-slate-100 pt-2">
+                             <div class="text-[10px] text-slate-400 truncate w-32">Key: {{ model.apiKey ? '••••' : 'None' }}</div>
+                             <button @click="testConnection(model)" :disabled="testingIds.includes(model.id)" class="text-xs bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium px-3 py-1 rounded transition-colors flex items-center gap-1 disabled:opacity-50"><i v-if="testingIds.includes(model.id)" class="fa-solid fa-circle-notch fa-spin text-indigo-500"></i><i v-else class="fa-solid fa-bolt text-indigo-500"></i> Test</button>
+                        </div>
+                        <div v-if="connectionStatus[model.id]" :class="['text-[10px] flex items-center gap-1', connectionStatus[model.id].success ? 'text-emerald-600' : 'text-red-600']">
+                            <i :class="['fa-solid', connectionStatus[model.id].success ? 'fa-check' : 'fa-circle-exclamation']"></i> {{ connectionStatus[model.id].message }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-slate-200 bg-slate-50 rounded-b-xl flex justify-end"><button @click="showModelModal = false" class="px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded shadow-sm hover:bg-indigo-700">Done</button></div>
+        </div>
+    </div>
+
+    <div v-if="overrideResult" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4" @click.self="overrideResult = null">
+        <div class="bg-white w-full max-w-sm rounded-xl shadow-2xl p-6">
+            <h3 class="font-bold text-lg text-slate-800 mb-2">Manual Override</h3>
+            <p class="text-sm text-slate-500 mb-4">Change the final status and critique.</p>
+            <div class="flex gap-4 mb-4">
+                <button @click="overrideStatus = true" :class="['flex-1 py-2 rounded text-sm font-bold border transition-colors', overrideStatus ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-white text-slate-500 border-slate-200']">PASS</button>
+                <button @click="overrideStatus = false" :class="['flex-1 py-2 rounded text-sm font-bold border transition-colors', !overrideStatus ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-slate-500 border-slate-200']">FAIL</button>
+            </div>
+            <textarea v-model="overrideCritique" rows="3" class="w-full border border-slate-300 rounded px-3 py-2 text-sm mb-4" placeholder="Critique..."></textarea>
+            <div class="flex justify-end gap-2"><button @click="overrideResult = null" class="px-3 py-2 text-sm text-slate-600">Cancel</button><button @click="saveOverride" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded font-medium hover:bg-indigo-700">Save</button></div>
+        </div>
+    </div>
+
+    <div v-if="showSnapshotModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" @click.self="showSnapshotModal = false">
+        <div class="bg-white w-full max-w-sm rounded-xl shadow-2xl p-6">
+            <h3 class="font-bold text-lg text-slate-800 mb-2">Save Snapshot</h3>
+            <input v-model="snapshotName" type="text" class="w-full border border-slate-300 rounded px-3 py-2 text-sm mb-4" placeholder="e.g. Logic Run - Model Comparison">
+            <div class="flex justify-end gap-2"><button @click="showSnapshotModal = false" class="px-3 py-2 text-sm text-slate-600">Cancel</button><button @click="saveSnapshot" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded font-medium hover:bg-indigo-700">Save</button></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const DEFAULT_STUDIES_URL = 'https://gist.githubusercontent.com/ggrow3/852dcc72bfb464414fcc3609d324ea5b/raw/8fd83bc035ef7367403d651a0c0f8006c23b5ca4/llmstudies.json';
+
+    const { createApp, reactive, ref, computed, onMounted } = Vue;
+
+   const IDBService = {
+        dbName: 'NeuroEvalDB', version: 2, 
+        async getDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(this.dbName, this.version);
+                request.onerror = (e) => reject(e.target.error);
+                request.onsuccess = (e) => resolve(e.target.result);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('models')) db.createObjectStore('models', { keyPath: 'id' });
+                    if (!db.objectStoreNames.contains('results')) db.createObjectStore('results', { keyPath: 'testId' });
+                    if (!db.objectStoreNames.contains('customTests')) db.createObjectStore('customTests', { keyPath: 'id' });
+                    if (!db.objectStoreNames.contains('snapshots')) db.createObjectStore('snapshots', { keyPath: 'id' });
+                };
+            });
+        },
+        async getAll(storeName) { 
+            const db = await this.getDB(); 
+            return new Promise(r => { 
+                const tx = db.transaction(storeName, 'readonly'); 
+                tx.objectStore(storeName).getAll().onsuccess = e => r(e.target.result); 
+            }); 
+        },
+        async save(storeName, item) { 
+            const db = await this.getDB(); 
+            const cleanItem = JSON.parse(JSON.stringify(item));
+            return new Promise(r => { 
+                const tx = db.transaction(storeName, 'readwrite'); 
+                tx.objectStore(storeName).put(cleanItem).onsuccess = e => r(e.target.result); 
+            }); 
+        },
+        async delete(storeName, id) { 
+            const db = await this.getDB(); 
+            return new Promise(r => { 
+                const tx = db.transaction(storeName, 'readwrite'); 
+                tx.objectStore(storeName).delete(id).onsuccess = () => r(); 
+            }); 
+        },
+        async clearStore(storeName) { 
+            const db = await this.getDB(); 
+            return new Promise(r => { 
+                const tx = db.transaction(storeName, 'readwrite'); 
+                tx.objectStore(storeName).clear(); 
+                tx.oncomplete = () => r(); 
+            }); 
+        }
+    };
+
+    const LLMService = {
+        async request(config, prompt) {
+            const adapters = { 'openai': this.callOpenAI, 'ollama': this.callOpenAI, 'anthropic': this.callAnthropic, 'google': this.callGemini };
+            const adapter = adapters[config.provider] || this.callOpenAI;
+            const startTime = Date.now();
+            try {
+                if (!config.apiKey && config.provider !== 'ollama') throw new Error("Missing API Key");
+                const responseText = await adapter(config, prompt);
+                return { success: true, response: responseText, latency: Date.now() - startTime };
+            } catch (err) {
+                return { success: false, response: `API Error: ${err.message}`, error: true, latency: Date.now() - startTime };
+            }
+        },
+        async callOpenAI(config, prompt) {
+            const endpoint = config.endpoint || "https://api.openai.com/v1/chat/completions";
+            const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.modelId, messages: [{ role: "user", content: prompt }], temperature: 0.7 }) });
+            if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || res.statusText); }
+            const data = await res.json(); return data.choices[0].message.content;
+        },
+        async callAnthropic(config, prompt) {
+            const endpoint = config.endpoint || "https://api.anthropic.com/v1/messages";
+            const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": config.apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" }, body: JSON.stringify({ model: config.modelId, max_tokens: 4096, messages: [{ role: "user", content: prompt }] }) });
+            if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || res.statusText); }
+            const data = await res.json(); return data.content[0].text;
+        },
+        async callGemini(config, prompt) {
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${config.modelId}:generateContent?key=${config.apiKey}`;
+            const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) });
+            if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || res.statusText); }
+            const data = await res.json(); return data.candidates[0].content.parts[0].text;
+        },
+        async fetchOpenAIModels(config) {
+            try {
+                const res = await fetch("https://api.openai.com/v1/models", { headers: { "Authorization": `Bearer ${config.apiKey}` } });
+                if(!res.ok) throw new Error("CORS/Auth Error");
+                const data = await res.json();
+                return data.data.map(m => m.id).sort();
+            } catch (e) { return ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"]; }
+        },
+        async fetchAnthropicModels(config) {
+            try {
+                const res = await fetch("https://api.anthropic.com/v1/models", {
+                    method: "GET",
+                    headers: {
+                        "x-api-key": config.apiKey,
+                        "anthropic-version": "2023-06-01",
+                        "anthropic-dangerous-direct-browser-access": "true", // Required for browser-side calls
+                        "content-type": "application/json"
+                    }
+                });
+
+                if (!res.ok) {
+                    const errText = await res.text();
+                    throw new Error(`Anthropic API Error: ${res.status} ${errText}`);
+                }
+
+                const data = await res.json();
+                // Anthropic returns { data: [{ id: "...", ... }] }
+                // We filter for "type": "model" just to be safe, though usually all are models
+                return data.data
+                    .filter(m => m.type === 'model') 
+                    .map(m => m.id)
+                    .sort();
+            } catch (e) { 
+                console.error("Failed to fetch Anthropic models:", e);
+                // Fallback list if API fails or key is invalid
+                return ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"]; 
+            }
+        },
+        async fetchGeminiModels(config) {
+             try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${config.apiKey}`);
+                if(!res.ok) throw new Error("Fetch Failed");
+                const data = await res.json();
+                return data.models.map(m => m.name.replace('models/', '')).sort();
+            } catch (e) { return ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.0-pro"]; }
+        },
+        async fetchOllamaModels(config) {
+            try {
+                const res = await fetch("http://localhost:11434/api/tags");
+                if(!res.ok) throw new Error("Fetch Failed");
+                const data = await res.json();
+                return data.models.map(m => m.name).sort();
+            } catch (e) { return []; }
+        }
+    };
+
+    const defaultModels = [
+        { id: "gpt-4o", name: "GPT-4o", provider: "openai", modelId: "gpt-4o", color: "#10a37f", apiKey: "", endpoint: "" },
+        { id: "claude-3-5", name: "Claude 3.5 Sonnet", provider: "anthropic", modelId: "claude-3-5-sonnet-20240620", color: "#d97757", apiKey: "", endpoint: "" },
+        { id: "local", name: "Local Llama 3", provider: "ollama", modelId: "llama3", color: "#333333", apiKey: "ollama", endpoint: "http://localhost:11434/v1/chat/completions" }
+    ];
+
+    createApp({
+        setup() {
+            const activeView = ref('runner');
+            const testCases = reactive([]);
+            const llmConfigurations = reactive([]);
+            const isLoadingDB = ref(true);
+            const gistStatus = ref("");
+            const isSidebarCollapsed = ref(false); 
+            
+            const studiesURL = ref(localStorage.getItem('neuroEval_studiesURL') || DEFAULT_STUDIES_URL);
+
+            const addMode = ref('manual'); // 'manual' or 'generate'
+            const generateTopic = ref("");
+            const generateCount = ref(3);
+            const isGeneratingTests = ref(false);
+            
+            const searchQuery = ref("");
+            const filterCategory = ref("");
+            const selectedTest = ref(null);
+            const selectedModelIds = ref([]);
+            const runningTestIds = ref([]);
+            const isBatchRunning = ref(false);
+            const currentRunningModelId = ref(null); 
+            const results = reactive({}); 
+            const selectedJudgeIds = ref([]); 
+            const isJudgeMenuOpen = ref(false);
+            const selectedMatrixTestIds = reactive(new Set());
+            const showAddTestModal = ref(false);
+            const isEditingTest = ref(false);
+            const isEditingModel = ref(false);
+            const showModelModal = ref(false);
+            const isModelMenuOpen = ref(false);
+            const isFetchingModels = ref(false);
+            const fetchedModelList = ref([]);
+            const testingIds = ref([]);
+            const overrideResult = ref(null);
+            const overrideStatus = ref(true);
+            const overrideCritique = ref("");
+            const toastMessage = ref("");
+            const showSnapshotModal = ref(false);
+            const snapshotName = ref("");
+            const snapshots = reactive([]);
+            const connectionStatus = reactive({});
+            const newTest = reactive({ id: "", name: "", category: "", difficulty: "Medium", prompt: "", correctAnswer: "", reasoning: "", tagString: "", researchTitle: "", author: "", url: "" });
+            const newModel = reactive({ id: "", name: "", provider: "openai", modelId: "", apiKey: "", endpoint: "", color: "#6366f1" });
+
+            const uniqueCategories = computed(() => [...new Set(testCases.map(t => t.category))].filter(Boolean));
+            const filteredTestCases = computed(() => testCases.filter(tc => (tc.name.toLowerCase().includes(searchQuery.value.toLowerCase()) || getPromptText(tc).toLowerCase().includes(searchQuery.value.toLowerCase())) && (filterCategory.value ? tc.category === filterCategory.value : true)));
+            const difficultyBadge = (d) => ({'Easy':'bg-green-100 text-green-700','Medium':'bg-yellow-100 text-yellow-700','Hard':'bg-red-100 text-red-700'}[d] || 'bg-gray-100');
+            const getModelColor = (id) => llmConfigurations.find(m => m.id === id)?.color || '#ccc';
+            
+            const getPromptText = (test) => {
+                if (!test) return '';
+                return test.prompt || test.Prompt || test.question || test.Question || test.input || test.Input || 
+                       test.text || test.Text || test.content || test.Content || 
+                       (test.messages && test.messages[0]?.content) || 
+                       '[No prompt found - check JSON structure]';
+            };
+            
+            const getResearchTitle = (test) => {
+                if (!test) return '';
+                if (test.research?.title) return test.research.title;
+                return test.researchTitle || test.study?.title || test.source?.title || test.title || 'Untitled Study';
+            };
+            
+            const getResearchYear = (test) => {
+                if (!test) return '';
+                if (test.research?.year) return test.research.year;
+                if (test.research?.date) return test.research.date;
+                return test.researchYear || test.study?.year || test.year || '';
+            };
+            
+            const getResearchAuthor = (test) => {
+                if (!test) return '';
+                if (test.research?.author) return test.research.author;
+                return test.researchAuthor || test.study?.author || test.author || test.authors || '';
+            };
+            
+            const getResearchUrl = (test) => {
+                if (!test) return '';
+                if (test.research?.url) return test.research.url;
+                return test.researchUrl || test.study?.url || test.url || test.link || test.source?.url || '';
+            };
+
+            const getResearchModels = (test) => {
+                if (!test?.research?.modelsTestedOn) return [];
+                return Array.isArray(test.research.modelsTestedOn) ? test.research.modelsTestedOn : [test.research.modelsTestedOn];
+            };
+            
+            const getReasoning = (test) => {
+                if (!test) return '';
+                return test.reasoning || test.Reasoning || test.rubric || test.Rubric || test.explanation || test.Explanation || 
+                       test.expectedLogic || test.logic || '';
+            };
+            
+            const getCorrectAnswer = (test) => {
+                if (!test) return '';
+                return test.correctAnswer || test.CorrectAnswer || test.correct_answer || test.answer || test.Answer || 
+                       test.expectedAnswer || test.expected || test.Expected || '';
+            };
+            
+            const selectTestCase = (tc) => selectedTest.value = tc;
+            const copyPrompt = () => selectedTest.value && navigator.clipboard.writeText(getPromptText(selectedTest.value));
+            const showToast = (msg) => { toastMessage.value = msg; setTimeout(() => toastMessage.value = "", 3000); };
+            const toggleMatrixSelection = (id) => selectedMatrixTestIds.has(id) ? selectedMatrixTestIds.delete(id) : selectedMatrixTestIds.add(id);
+            const isAllSelected = computed(() => filteredTestCases.value.length > 0 && selectedMatrixTestIds.size === filteredTestCases.value.length);
+            const toggleSelectAll = () => isAllSelected.value ? selectedMatrixTestIds.clear() : filteredTestCases.value.forEach(t => selectedMatrixTestIds.add(t.id));
+
+            const fetchStudiesFromGist = async () => {
+                if (!studiesURL.value) return [];
+                try {
+                    gistStatus.value = "Fetching from configured URL...";
+                    const res = await fetch(studiesURL.value);
+                    if (!res.ok) throw new Error("API error");
+                    const data = await res.json();
+                    if(Array.isArray(data)){ 
+                        gistStatus.value = `Loaded ${data.length} studies.`; 
+                        return data; 
+                    }
+                    return [];
+                } catch (e) { gistStatus.value = "Failed: " + e.message; showToast("Failed to load studies: " + e.message); return []; }
+            };
+
+            const loadFromDB = async () => {
+                isLoadingDB.value = true;
+                testCases.splice(0, testCases.length);
+                const gistCases = await fetchStudiesFromGist();
+                testCases.push(...gistCases);
+                
+                const models = await IDBService.getAll('models');
+                if (models.length === 0) { 
+                    llmConfigurations.push(...defaultModels); 
+                    await Promise.all(defaultModels.map(m => IDBService.save('models', m))); 
+                    selectedModelIds.value = ["gpt-4o"]; 
+                } else { 
+                    llmConfigurations.splice(0, llmConfigurations.length, ...models); 
+                    if(selectedModelIds.value.length === 0 && models.length > 0) selectedModelIds.value = [models[0].id]; 
+                }
+                
+                const customs = await IDBService.getAll('customTests');
+                customs.forEach(c => { const i = testCases.findIndex(t => t.id === c.id); if(i!==-1) testCases[i]=c; else testCases.push(c); });
+                const savedResults = await IDBService.getAll('results');
+                savedResults.forEach(item => results[item.testId] = item.data);
+                
+                const savedSnaps = await IDBService.getAll('snapshots');
+                savedSnaps.sort((a,b) => b.timestamp - a.timestamp);
+                snapshots.push(...savedSnaps);
+
+                isLoadingDB.value = false;
+            };
+
+            const reloadStudies = async () => {
+                localStorage.setItem('neuroEval_studiesURL', studiesURL.value);
+                await loadFromDB();
+                showToast("Studies reloaded!");
+            };
+
+            const addNewModel = async () => {
+                if(!newModel.name) return;
+                const model = isEditingModel.value ? Object.assign(llmConfigurations.find(m => m.id === newModel.id), newModel) : { id: `m-${Date.now()}`, ...newModel };
+                if(!isEditingModel.value) llmConfigurations.push(model);
+                await IDBService.save('models', model);
+                Object.assign(newModel, { id: "", name: "", modelId: "", apiKey: "", endpoint: "" }); isEditingModel.value = false;
+            };
+            const editModel = (m) => { Object.assign(newModel, m); isEditingModel.value = true; };
+            const deleteModel = async (i) => { const m = llmConfigurations.splice(i, 1)[0]; await IDBService.delete('models', m.id); };
+
+            const openEditTestModal = () => { if(!selectedTest.value) return; Object.assign(newTest, selectedTest.value); newTest.tagString = (selectedTest.value.tags || []).join(', '); isEditingTest.value = true; showAddTestModal.value = true; };
+            const openAddTestModal = () => { 
+                Object.assign(newTest, { id: "", name: "", category: "", prompt: "", correctAnswer: "", reasoning: "", tagString: "" }); 
+                isEditingTest.value = false; 
+                addMode.value = 'manual'; // Reset to manual mode
+                showAddTestModal.value = true; 
+            };
+            
+            const saveTest = async () => {
+                if(!newTest.name || !newTest.prompt) { showToast("Name and Prompt are required"); return; }
+                const test = { ...newTest, tags: newTest.tagString.split(',').map(s=>s.trim()).filter(Boolean) };
+                delete test.tagString;
+                
+                if (!isEditingTest) {
+                    test.id = `custom-${Date.now()}`;
+                    testCases.push(test);
+                } else {
+                    const idx = testCases.findIndex(t => t.id === test.id);
+                    if (idx !== -1) testCases[idx] = test;
+                    if (selectedTest.value?.id === test.id) selectedTest.value = test;
+                }
+                
+                await IDBService.save('customTests', test);
+                showAddTestModal.value = false;
+                showToast("Test Case Saved!");
+            };
+
+            const fetchModelsForProvider = async () => {
+                isFetchingModels.value = true; fetchedModelList.value = [];
+                try {
+                    let list = [];
+                    if (newModel.provider === 'openai') list = await LLMService.fetchOpenAIModels(newModel);
+                    else if (newModel.provider === 'anthropic') list = await LLMService.fetchAnthropicModels(newModel);
+                    else if (newModel.provider === 'google') list = await LLMService.fetchGeminiModels(newModel);
+                    else if (newModel.provider === 'ollama') list = await LLMService.fetchOllamaModels(newModel);
+                    if(list.length > 0) { fetchedModelList.value = list; showToast(`Fetched ${list.length} models.`); } else { showToast("No models found."); }
+                } catch (e) { showToast("Error: " + e.message); } finally { isFetchingModels.value = false; }
+            };
+
+            const testConnection = async (model) => {
+                testingIds.value.push(model.id); delete connectionStatus[model.id];
+                const res = await LLMService.request(model, "Hello");
+                connectionStatus[model.id] = { success: res.success, error: !res.success, message: res.success ? "OK" : (res.response || "Failed") };
+                testingIds.value = testingIds.value.filter(id => id !== model.id);
+            };
+
+            const performGrading = async (testCase, modelResponse) => {
+                if (selectedJudgeIds.value.length === 0) return { isCorrect: false, details: [] };
+                const rubricPrompt = `Task: Grade AI response. Return JSON only: {"pass": boolean, "reason": "string"}\nQuestion: ${getPromptText(testCase)}\nExpected: ${getCorrectAnswer(testCase)}\nRubric: ${getReasoning(testCase)}\nResponse: ${modelResponse}`;
+                const judgePromises = selectedJudgeIds.value.map(async (jid) => {
+                    const judgeConfig = llmConfigurations.find(m => m.id === jid);
+                    if (!judgeConfig) return null;
+                    const res = await LLMService.request(judgeConfig, rubricPrompt);
+                    if (res.success) {
+                        try {
+                            const p = JSON.parse(res.response.replace(/```json|```/g, '').trim());
+                            return { judgeId: jid, judgeName: judgeConfig.name, pass: p.pass, reason: p.reason, humanRating: null };
+                        } catch(e) { return { judgeId: jid, judgeName: judgeConfig.name, pass: false, reason: "JSON Parse Error", humanRating: null }; }
+                    }
+                    return { judgeId: jid, judgeName: judgeConfig.name, pass: false, reason: "Request Failed", humanRating: null };
+                });
+                const outcomes = await Promise.allSettled(judgePromises);
+                const details = outcomes.filter(o => o.status === 'fulfilled' && o.value).map(o => o.value);
+                const passCount = details.filter(d => d.pass).length;
+                const consensus = passCount > (details.length / 2); 
+                return { isCorrect: consensus, details: details };
+            };
+
+            const executeTest = async (testCase) => {
+                if (!testCase || selectedModelIds.value.length === 0) return;
+                runningTestIds.value.push(testCase.id);
+                const testId = testCase.id;
+                
+                const runResults = results[testId] || [];
+                
+                for (const mid of selectedModelIds.value) {
+                    currentRunningModelId.value = mid;
+                    const modelConfig = llmConfigurations.find(m => m.id === mid);
+                    
+                    const res = await LLMService.request(modelConfig, getPromptText(testCase));
+                    let grading = { isCorrect: false, details: [] };
+                    if (res.success) grading = await performGrading(testCase, res.response);
+                    
+                    const resultObj = { modelId: mid, modelName: modelConfig.name, isCorrect: grading.isCorrect, judgeDetails: grading.details, manualCritique: null, response: res.response, latency: res.latency, error: res.error, timestamp: Date.now() };
+                    
+                    const existingIdx = runResults.findIndex(r => r.modelId === mid);
+                    if (existingIdx !== -1) runResults[existingIdx] = resultObj;
+                    else runResults.push(resultObj);
+                    
+                    results[testId] = [...runResults];
+                }
+                
+                currentRunningModelId.value = null;
+                await IDBService.save('results', { testId: testId, data: results[testId] });
+                runningTestIds.value = runningTestIds.value.filter(id => id !== testId);
+            };
+
+            const rateJudge = async (resultObj, judgeDetail, isAccurate) => {
+                judgeDetail.humanRating = isAccurate;
+                for (const tid in results) { if (results[tid].includes(resultObj)) { await IDBService.save('results', { testId: tid, data: results[tid] }); break; } }
+            };
+
+            const openOverrideModal = (res) => { overrideResult.value = res; overrideStatus.value = res.isCorrect; overrideCritique.value = res.manualCritique || ""; };
+            const saveOverride = async () => {
+                if(!overrideResult.value) return;
+                overrideResult.value.isCorrect = overrideStatus.value;
+                overrideResult.value.manualCritique = overrideCritique.value;
+                for (const tid in results) { if (results[tid].includes(overrideResult.value)) { await IDBService.save('results', { testId: tid, data: results[tid] }); break; } }
+                overrideResult.value = null;
+            };
+
+            const stopBatch = () => { isBatchRunning.value = false; showToast("Stopping batch run..."); };
+            
+            const clearResults = async () => {
+                if(!confirm("Clear all visual results? (This does not delete snapshots)")) return;
+                Object.keys(results).forEach(key => delete results[key]);
+                await IDBService.clearStore('results');
+                showToast("Results cleared.");
+            };
+
+            const runAllOrSelected = async () => {
+                if(isBatchRunning.value) return;
+                let targets = selectedMatrixTestIds.size > 0 ? filteredTestCases.value.filter(t => selectedMatrixTestIds.has(t.id)) : filteredTestCases.value;
+                isBatchRunning.value = true;
+                for (const test of targets) {
+                    if(!isBatchRunning.value) break;
+                    await executeTest(test); 
+                    if(!isBatchRunning.value) break;
+                }
+                isBatchRunning.value = false;
+                showToast("Batch run completed or stopped.");
+            };
+
+            const getAssessmentResult = (tid, mid) => results[tid]?.find(r => r.modelId === mid);
+            const goToTest = (test) => { selectedTest.value = test; activeView.value = 'runner'; };
+            const deleteTest = async (id) => { testCases.splice(testCases.findIndex(t=>t.id===id), 1); selectedTest.value = null; await IDBService.delete('customTests', id); };
+            
+            const saveSnapshot = async () => {
+                if(!snapshotName.value) return;
+                const snap = { id: `snap-${Date.now()}`, name: snapshotName.value, timestamp: Date.now(), data: JSON.parse(JSON.stringify(results)), models: JSON.parse(JSON.stringify(llmConfigurations)) };
+                snapshots.unshift(snap); await IDBService.save('snapshots', snap);
+                showSnapshotModal.value = false; snapshotName.value = ""; showToast("Snapshot saved!");
+            };
+            const loadSnapshot = async (snap) => { if(!confirm(`Load snapshot "${snap.name}"?`)) return; Object.keys(results).forEach(k => delete results[k]); Object.assign(results, snap.data); activeView.value = 'assessment'; };
+            const deleteSnapshot = async (id) => { if(!confirm("Delete?")) return; const idx = snapshots.findIndex(s => s.id === id); if(idx > -1) snapshots.splice(idx, 1); await IDBService.delete('snapshots', id); };
+
+            const exportCSV = () => {
+                let rows = []; Object.keys(results).forEach(tid => { const t = testCases.find(x => x.id === tid); if(t) results[tid].forEach(r => rows.push({ ...r, testName: t.name, category: t.category })); });
+                if (!rows.length) return alert("No data.");
+                const csv = ["Test,Category,Model,Pass,Response", ...rows.map(r => `"${r.testName}","${r.category}","${r.modelName}",${r.isCorrect},"${r.response.replace(/"/g,'""')}"`)].join("\n");
+                const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); link.download = 'neuro_eval.csv'; link.click();
+            };
+
+            // Statistical Helpers
+            const getModelStats = (modelId) => {
+                let pass = 0, fail = 0;
+                Object.values(results).forEach(runList => {
+                    const res = runList.find(r => r.modelId === modelId);
+                    if (res) { res.isCorrect ? pass++ : fail++; }
+                });
+                const total = pass + fail;
+                return { pass, fail, total, rate: total ? Math.round((pass / total) * 100) : 0 };
+            };
+
+            const getTestStats = (testId) => {
+                const runs = results[testId] || [];
+                const pass = runs.filter(r => r.isCorrect).length;
+                const total = runs.length;
+                return { pass, total, fail: total - pass, rate: total ? Math.round((pass / total) * 100) : 0 };
+            };
+
+            const globalStats = computed(() => {
+                let pass = 0, total = 0;
+                Object.values(results).forEach(runList => {
+                    runList.forEach(r => { total++; if (r.isCorrect) pass++; });
+                });
+                return { pass, total, fail: total - pass, rate: total ? Math.round((pass / total) * 100) : 0 };
+            });
+
+            // AI Generation Logic
+            const generateStudies = async () => {
+                if (!generateTopic.value) return showToast("Please enter a topic.");
+                if (selectedModelIds.value.length === 0) return showToast("Please select a model to generate content.");
+                
+                const modelConfig = llmConfigurations.find(m => m.id === selectedModelIds.value[0]);
+                if (!modelConfig) return showToast("Selected model config not found.");
+
+                isGeneratingTests.value = true;
+
+                const exampleJson = JSON.stringify({
+                    id: "AI-GEN-01",
+                    name: "Example Test Name",
+                    category: "Generated Category",
+                    difficulty: "Hard",
+                    tags: ["tag1", "tag2"],
+                    prompt: "The actual prompt text...",
+                    correctAnswer: "The expected secure answer...",
+                    reasoning: "Why this is difficult...",
+                    research: {
+                        title: "Relevant Study Title (or N/A)",
+                        year: 2024,
+                        author: "AI Generated",
+                        url: "",
+                        modelsTestedOn: ["GPT-4"],
+                        date: "2024"
+                    }
+                });
+
+                const systemPrompt = `You are a researcher generating adversarial test cases for LLMs. 
+Task: Generate ${generateCount.value} high-quality research test cases about "${generateTopic.value}".
+Output strictly valid JSON array []. No markdown, no explanations.
+Use this schema: ${exampleJson}`;
+
+                try {
+                    const res = await LLMService.request(modelConfig, systemPrompt);
+                    if (!res.success) throw new Error(res.response);
+
+                    const cleanJson = res.response.replace(/```json|```/g, '').trim();
+                    const newStudies = JSON.parse(cleanJson);
+
+                    if (!Array.isArray(newStudies)) throw new Error("LLM did not return an array.");
+
+                    let count = 0;
+                    for (const study of newStudies) {
+                        study.id = `GEN-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+                        if(!study.category) study.category = "AI Generated";
+                        if(!study.research) study.research = { title: "AI Generated Study", year: new Date().getFullYear(), author: modelConfig.name };
+                        
+                        testCases.push(study);
+                        await IDBService.save('customTests', study);
+                        count++;
+                    }
+
+                    showToast(`Successfully generated ${count} new studies!`);
+                    showAddTestModal.value = false; // Close the unified modal
+                    generateTopic.value = "";
+                } catch (e) {
+                    console.error(e);
+                    showToast("Generation Failed: " + e.message);
+                } finally {
+                    isGeneratingTests.value = false;
+                }
+            };
+
+            onMounted(() => loadFromDB());
+
+            return {
+                activeView, testCases, llmConfigurations, searchQuery, filterCategory, selectedTest, selectedModelIds, runningTestIds, isBatchRunning, currentRunningModelId, results,
+                showAddTestModal, showModelModal, isModelMenuOpen, selectedJudgeIds, isJudgeMenuOpen, rateJudge, 
+                overrideResult, overrideStatus, overrideCritique, openOverrideModal, saveOverride, toastMessage, gistStatus,
+                uniqueCategories, filteredTestCases, difficultyBadge, getModelColor, selectTestCase, copyPrompt, deleteTest, deleteModel, addNewModel, newTest, newModel, executeTest, runAllOrSelected, stopBatch, clearResults, getAssessmentResult, exportCSV, saveOverrides: saveOverride, editModel, openEditTestModal, openAddTestModal, isEditingTest, isEditingModel, toggleMatrixSelection, toggleSelectAll, isAllSelected, selectedMatrixTestIds, goToTest, connectionStatus, isLoadingDB, isSidebarCollapsed, fetchModelsForProvider, isFetchingModels, fetchedModelList, testConnection, testingIds,
+                studiesURL, reloadStudies, showSnapshotModal, snapshotName, saveSnapshot, loadSnapshot, deleteSnapshot, snapshots, saveTest,
+                getResearchModels,getModelStats,getTestStats, globalStats,
+                addMode, generateTopic, generateCount, isGeneratingTests, generateStudies,
+                getPromptText, getResearchTitle, getResearchYear, getResearchAuthor, getResearchUrl, getReasoning, getCorrectAnswer
+            };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
