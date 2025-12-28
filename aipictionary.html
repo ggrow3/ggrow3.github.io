@@ -534,11 +534,12 @@
                 
                 try {
                     const imageData = canvas.value.toDataURL('image/jpeg', 0.5);
+                    
+                    // --- CORRECTED PROMPT: Removed the secret word! ---
                     const prompt = `
                         You are playing Pictionary.
                         The category is: ${currentWord.value.category}.
                         Analyze the drawing. List the top 10 things this looks like.
-                        The target word is "${currentWord.value.word}", but DO NOT just output it unless the drawing genuinely looks like it.
                         Strictly output valid JSON: { "best_guess": "string", "guesses": ["string", "string"...] }
                         IMPORTANT: Ensure all guesses are UNIQUE. Do not repeat the best_guess in the guesses list.
                     `;
@@ -576,7 +577,7 @@
 
                     topGuesses.value = uniqueList.slice(0, 10);
 
-                    // Check result
+                    // Check result (Client side check)
                     gameState.value = 'result';
                     if (isCorrect.value) {
                         teams.value[currentTeamIndex.value].score++;
