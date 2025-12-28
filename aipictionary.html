@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Pictionary: Party Mode</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Fredoka', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+                    colors: { brand: '#FF5A5F', paper: '#f8f9fa', success: '#22c55e' },
+                    boxShadow: { 'solid': '4px 4px 0px 0px rgba(0,0,0,0.1)' },
+                    animation: { 'fade-in': 'fadeIn 0.3s ease-in-out', 'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite' },
+                    keyframes: { fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } } }
+                }
+            }
+        }
+    </script>
+    <style>
+        [v-cloak] { display: none; }
+        body { overscroll-behavior: none; }
+        canvas { touch-action: none; cursor: crosshair; }
+        .pattern-bg {
+            background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    </style>
+</head>
+<body class="bg-paper text-slate-800 font-sans h-[100dvh] flex flex-col overflow-hidden selection:bg-brand selection:text-white">
+
+<div id="app" v-cloak class="flex-1 flex flex-col h-full relative max-w-6xl mx-auto w-full shadow-2xl bg-white md:my-4 md:rounded-2xl overflow-hidden border-x border-slate-200">
+
+    <header class="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-20 flex-shrink-0">
+        <div class="flex items-center gap-2 cursor-pointer" @click="resetGame">
+            <div class="w-8 h-8 bg-brand rounded-lg flex items-center justify-center text-white shadow-sm transform -rotate-3">
+                <i class="fa-solid fa-pencil"></i>
+            </div>
+            <h1 class="font-bold text-lg text-slate-700 tracking-tight hidden sm:block">AI<span class="text-brand">Pictionary</span></h1>
+        </div>
+
+        <div v-if="gameState === 'drawing' || gameState === 'result'" class="flex items-center gap-2 md:gap-4">
+            
+            <div class="bg-slate-100 px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hidden sm:block">
+                <i class="fa-solid fa-user mr-1"></i> {{ teams[currentTeamIndex].name }}
+            </div>
+            
+            <div v-if="enableTimer && gameState === 'drawing'" :class="['px-3 py-1 rounded-lg text-xs font-bold border flex items-center transition-colors', timeLeft <= 10 ? 'bg-red-50 text-red-600 border-red-200 animate-pulse-fast' : 'bg-slate-50 text-slate-700 border-slate-200']">
+                <i class="fa-solid fa-clock mr-1.5"></i> 
+                <span class="font-mono text-sm">{{ formatTime(timeLeft) }}</span>
+            </div>
+
+            <div class="bg-brand/10 text-brand px-3 py-1 rounded-lg text-xs font-bold border border-brand/20">
+                <i class="fa-solid fa-tag mr-1"></i> {{ currentWord.category }}
+            </div>
+        </div>
+
+        <button @click="showSettings = !showSettings" class="w-9 h-9 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 transition-colors flex items-center justify-center">
+            <i class="fa-solid fa-gear"></i>
+        </button>
+    </header>
+
+    <div v-if="showSettings" class="absolute inset-0 bg-white/95 backdrop-blur z-50 flex items-center justify-center p-6" @click.self="showSettings = false">
+        <div class="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xl p-6 space-y-4">
+            <h2 class="text-xl font-bold text-slate-800">Settings</h2>
+            <div>
+                <label class="block text-xs font-bold text-slate-400 uppercase mb-1">OpenAI API Key</label>
+                <input type="password" v-model="apiKey" placeholder="sk-..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand">
+            </div>
+            <button @click="showSettings = false" class="w-full bg-slate-800 text-white font-bold py-3 rounded-xl hover:bg-slate-900 transition-colors">Done</button>
+        </div>
+    </div>
+
+    <div v-if="gameState === 'lobby'" class="flex-1 overflow-y-auto p-6 flex flex-col items-center max-w-2xl mx-auto w-full">
+        <div class="text-center mb-6">
+            <h2 class="text-3xl font-black text-slate-800 mb-2">Game Setup</h2>
+            <p class="text-slate-500 text-sm">Configure players and options.</p>
+        </div>
+
+        <div class="w-full mb-6">
+            <h3 class="text-xs font-bold text-slate-400 uppercase mb-3">Players / Teams</h3>
+            <div class="space-y-2">
+                <div v-for="(team, idx) in teams" :key="idx" class="flex gap-2">
+                    <input type="text" v-model="team.name" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:outline-none focus:border-brand" placeholder="Player Name">
+                    <button v-if="teams.length > 1" @click="removeTeam(idx)" class="w-12 rounded-xl bg-slate-100 text-slate-400 hover:text-red-500 hover:bg-red-50"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <button @click="addTeam" class="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-sm font-bold hover:border-brand hover:text-brand transition-colors">+ Add Player</button>
+            </div>
+        </div>
+
+        <div class="w-full mb-6">
+            <h3 class="text-xs font-bold text-slate-400 uppercase mb-3">Categories</h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <button v-for="cat in availableCategories" :key="cat.id" 
+                    @click="toggleCategory(cat.id)"
+                    :class="['p-3 rounded-xl border text-sm font-bold text-left transition-all flex items-center gap-2', 
+                    selectedCategories.includes(cat.id) ? 'border-brand bg-brand/5 text-brand shadow-sm' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50']">
+                    <i :class="cat.icon"></i> {{ cat.name }}
+                </button>
+            </div>
+        </div>
+
+        <div class="w-full mb-8 bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-xs font-bold text-slate-400 uppercase">Timer</h3>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" v-model="enableTimer" class="sr-only peer">
+                    <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-brand/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
+                </label>
+            </div>
+            
+            <div v-if="enableTimer" class="flex items-center gap-3 mt-3 animate-fade-in">
+                <label class="text-sm font-bold text-slate-600">Duration:</label>
+                <div class="flex gap-2">
+                    <button v-for="time in [30, 60, 90, 120]" :key="time" 
+                        @click="timerDuration = time"
+                        :class="['px-3 py-1.5 rounded-lg text-sm font-bold transition-colors', timerDuration === time ? 'bg-brand text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-100']">
+                        {{ time }}s
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <button @click="startGame" class="w-full bg-brand text-white font-bold text-lg py-4 rounded-xl shadow-brand shadow-solid hover:translate-y-0.5 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed" :disabled="!canStart">
+            Start Game
+        </button>
+    </div>
+
+    <div v-if="gameState === 'turn_start'" class="flex-1 flex flex-col items-center justify-center p-6 bg-slate-50 pattern-bg">
+        <div class="max-w-sm w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-slate-200">
+            <div class="text-xs font-bold text-slate-400 uppercase mb-1">Up Next</div>
+            <h2 class="text-2xl font-black text-slate-800 mb-6">{{ teams[currentTeamIndex].name }}</h2>
+            
+            <div class="relative group cursor-pointer mb-8" @click="revealWord = true">
+                <div v-if="!revealWord" class="h-32 bg-slate-800 rounded-xl flex flex-col items-center justify-center text-white transition-transform hover:scale-105 shadow-lg">
+                    <i class="fa-solid fa-eye text-3xl mb-2"></i>
+                    <span class="font-bold">Tap to Reveal Word</span>
+                    <span class="text-xs text-slate-400 mt-1">Don't let others see!</span>
+                </div>
+                <div v-else class="h-32 bg-brand rounded-xl flex flex-col items-center justify-center text-white shadow-lg animate-fade-in">
+                    <div class="text-xs uppercase opacity-75 mb-1">{{ currentWord.category }}</div>
+                    <div class="text-3xl font-black uppercase tracking-wider">{{ currentWord.word }}</div>
+                </div>
+            </div>
+
+            <button v-if="revealWord" @click="startDrawingPhase" class="w-full bg-slate-800 text-white font-bold py-3 rounded-xl hover:bg-slate-900">
+                Start Drawing <i class="fa-solid fa-arrow-right ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <main v-show="gameState === 'drawing' || gameState === 'result'" class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        
+        <div class="flex-1 relative flex flex-col bg-slate-50 pattern-bg touch-none">
+            
+            <div class="absolute top-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-10 transition-all duration-300" :class="{'opacity-0 pointer-events-none': isAnalyzing || isTimeUp}">
+                
+                <div class="flex items-center gap-1 bg-white p-1.5 rounded-xl shadow-solid border border-slate-200">
+                    <button v-for="color in colors" :key="color" 
+                        @click="setTool('brush', color)" 
+                        :class="['w-8 h-8 rounded-lg transition-transform hover:scale-105', (currentTool === 'brush' && brushColor === color) ? 'ring-2 ring-offset-1 ring-slate-300 scale-110' : '']" 
+                        :style="{ backgroundColor: color }">
+                    </button>
+                    <div class="w-px h-6 bg-slate-200 mx-1"></div>
+                    <button @click="setTool('eraser')" 
+                        :class="['w-8 h-8 rounded-lg flex items-center justify-center transition-colors', currentTool === 'eraser' ? 'bg-slate-800 text-white shadow-lg ring-2 ring-offset-1 ring-slate-300' : 'bg-slate-100 text-slate-400 hover:bg-slate-200']">
+                        <i class="fa-solid fa-eraser"></i>
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-1 bg-white p-1.5 rounded-xl shadow-solid border border-slate-200">
+                    <button v-for="size in [4, 8, 16]" :key="size" 
+                        @click="brushSize = size"
+                        :class="['w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-50', brushSize === size ? 'bg-slate-100 ring-2 ring-slate-200' : '']">
+                        <div class="bg-slate-800 rounded-full" :style="{ width: size + 'px', height: size + 'px' }"></div>
+                    </button>
+                    <div class="w-px h-6 bg-slate-200 mx-1"></div>
+                    <button @click="clearCanvas" class="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center transition-colors" title="Clear Canvas">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="absolute top-4 left-4 z-0 opacity-20 pointer-events-none hidden md:block">
+                <div class="text-5xl font-black text-slate-300 uppercase">{{ currentWord.word }}</div>
+            </div>
+
+            <div v-if="isTimeUp" class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-30 flex items-center justify-center animate-fade-in">
+                <div class="bg-white p-6 rounded-2xl shadow-2xl text-center transform scale-110">
+                    <div class="text-5xl mb-2">⏰</div>
+                    <h2 class="text-3xl font-black text-slate-800 mb-1">Time's Up!</h2>
+                    <p class="text-slate-500 mb-6">Pencils down.</p>
+                    <button @click="submitDrawing" class="w-full bg-brand text-white font-bold py-3 px-8 rounded-xl hover:bg-red-600 transition-colors">
+                        Submit Drawing <i class="fa-solid fa-arrow-right ml-1"></i>
+                    </button>
+                </div>
+            </div>
+
+            <canvas ref="canvas"
+                @mousedown="startDrawing" @mousemove="draw" @mouseup="stopDrawing" @mouseleave="stopDrawing"
+                @touchstart="startDrawing" @touchmove="draw" @touchend="stopDrawing"
+                class="absolute inset-0 w-full h-full touch-none"
+            ></canvas>
+
+            <div v-if="gameState === 'drawing' && !isTimeUp" class="absolute bottom-6 right-6 md:right-auto md:left-1/2 md:-translate-x-1/2 z-20">
+                <button @click="submitDrawing" :disabled="isAnalyzing" :class="['h-14 px-8 rounded-full shadow-solid border-2 border-slate-900 font-bold text-lg flex items-center gap-2 transition-all transform active:scale-95 active:shadow-none', isAnalyzing ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-brand text-white hover:bg-red-500']">
+                    <span v-if="isAnalyzing">AI is Guessing...</span>
+                    <span v-else>Submit to AI <i class="fa-solid fa-wand-magic-sparkles ml-1"></i></span>
+                </button>
+            </div>
+        </div>
+
+        <div :class="['bg-white border-l border-slate-200 flex flex-col transition-all duration-300 absolute inset-x-0 bottom-0 md:relative md:inset-auto md:w-80 md:h-full z-30 shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] md:shadow-none', (gameState === 'result' || showMobileResults) ? 'h-[80%]' : 'h-0 md:h-full']">
+            
+            <div class="md:hidden flex justify-center pt-2 pb-1" @click="showMobileResults = !showMobileResults">
+                <div class="w-12 h-1.5 bg-slate-200 rounded-full"></div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-6 space-y-6">
+                
+                <div class="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                    <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Scoreboard</h3>
+                    <div class="flex flex-wrap gap-2">
+                        <div v-for="(team, i) in teams" :key="i" :class="['px-2 py-1 rounded text-xs font-bold flex items-center gap-1.5', i === currentTeamIndex ? 'bg-white shadow-sm text-slate-800 border border-slate-200' : 'text-slate-400']">
+                            <i v-if="i === currentTeamIndex" class="fa-solid fa-pencil text-[10px] text-brand"></i>
+                            {{ team.name }}: {{ team.score }}
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="gameState === 'result'" class="text-center animate-fade-in">
+                    <div v-if="isCorrect" class="inline-block px-4 py-2 bg-green-100 text-green-700 rounded-full text-sm font-bold mb-4">
+                        <i class="fa-solid fa-check-circle mr-1"></i> AI Got It! (+1 Point)
+                    </div>
+                    <div v-else class="inline-block px-4 py-2 bg-red-100 text-red-700 rounded-full text-sm font-bold mb-4">
+                        <i class="fa-solid fa-xmark mr-1"></i> AI Failed
+                    </div>
+
+                    <div class="text-xs text-slate-400 uppercase mb-1">AI's Best Guess</div>
+                    <div class="text-3xl font-black text-slate-800 mb-4 break-words leading-none">{{ bestGuess || '???' }}</div>
+
+                    <div class="bg-slate-50 rounded-xl overflow-hidden border border-slate-100 text-left">
+                        <div class="px-3 py-2 bg-slate-100 text-[10px] font-bold text-slate-500 uppercase flex justify-between">
+                            <span>Guesses</span>
+                            <span>Target: {{ currentWord.word }}</span>
+                        </div>
+                        <div v-for="(guess, i) in topGuesses" :key="i" :class="['px-3 py-2 text-sm border-b border-slate-100 last:border-0 flex justify-between', isMatch(guess.word) ? 'bg-green-50 text-green-700 font-bold' : 'text-slate-600']">
+                            <span class="capitalize">{{ i+1 }}. {{ guess.word }}</span>
+                            <i v-if="isMatch(guess.word)" class="fa-solid fa-check"></i>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2 mt-6">
+                        <button v-if="!isCorrect" @click="resumeDrawing" class="flex-1 bg-white border-2 border-slate-200 text-slate-600 font-bold py-3 rounded-xl hover:border-brand hover:text-brand transition-colors">
+                            <i class="fa-solid fa-pencil"></i> Retry
+                        </button>
+                        
+                        <button @click="nextTurn" class="flex-1 bg-slate-800 text-white font-bold py-3 rounded-xl hover:bg-slate-900 transition-colors">
+                            Next <i class="fa-solid fa-forward ml-1"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div v-else class="text-center text-slate-400 py-10">
+                    <i class="fa-solid fa-palette text-4xl mb-3 opacity-20"></i>
+                    <p class="text-sm">Draw <span class="text-slate-800 font-bold">{{ currentWord.word }}</span>!<br>Try to get the AI to guess it.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+</div>
+
+<script>
+    // --- DICTIONARY ---
+    const WORD_DB = {
+        person: ["Ninja", "Cowboy", "Baby", "King", "Pirate", "Astronaut", "Clown", "Ghost", "Robot", "Witch", "Vampire", "Chef", "Doctor", "Teacher", "Thief", "Queen", "Soldier", "Santa", "Mermaid", "Zombie"],
+        place: ["Beach", "Hospital", "School", "Moon", "Castle", "Prison", "Forest", "Desert", "City", "Farm", "Library", "Airport", "Cinema", "Park", "Gym", "Church", "Factory", "Hotel", "Stadium", "Zoo"],
+        animal: ["Lion", "Penguin", "Giraffe", "Spider", "Snake", "Elephant", "Dog", "Cat", "Fish", "Bird", "Shark", "Whale", "Bear", "Wolf", "Horse", "Rabbit", "Mouse", "Tiger", "Monkey", "Frog"],
+        object: ["Pizza", "Computer", "Sword", "Chair", "Car", "Phone", "Book", "Key", "Shoe", "Hat", "Clock", "Lamp", "Ball", "Camera", "Guitar", "Bicycle", "Glasses", "Ring", "Hammer", "Knife"],
+        action: ["Running", "Dancing", "Swimming", "Sleeping", "Eating", "Flying", "Crying", "Laughing", "Fighting", "Cooking", "Driving", "Reading", "Writing", "Singing", "Jumping", "Walking", "Drinking", "Fishing", "Skiing", "Surfing"],
+        difficult: ["Electricity", "Nostalgia", "WiFi", "Gravity", "Sound", "Wind", "Heat", "Cold", "Love", "Idea", "Time", "Music", "Dream", "Nightmare", "Silence", "Shadow", "Reflection", "Echo", "Thunder", "Lightning"]
+    };
+
+    const { createApp, ref, computed, onMounted, nextTick } = Vue;
+
+    createApp({
+        setup() {
+            // --- State ---
+            const gameState = ref('lobby'); // lobby, turn_start, drawing, result
+            const showSettings = ref(false);
+            const apiKey = ref(localStorage.getItem('openai_key') || '');
+            const showMobileResults = ref(false);
+            const isAnalyzing = ref(false);
+
+            // Lobby State
+            const teams = ref([{ name: 'Player 1', score: 0 }, { name: 'Player 2', score: 0 }]);
+            const availableCategories = [
+                { id: 'person', name: 'Person', icon: 'fa-solid fa-user' },
+                { id: 'place', name: 'Place', icon: 'fa-solid fa-map-location-dot' },
+                { id: 'animal', name: 'Animal', icon: 'fa-solid fa-paw' },
+                { id: 'object', name: 'Object', icon: 'fa-solid fa-cube' },
+                { id: 'action', name: 'Action', icon: 'fa-solid fa-person-running' },
+                { id: 'difficult', name: 'Difficult', icon: 'fa-solid fa-brain' },
+                { id: 'all_play', name: 'All Play (Mix)', icon: 'fa-solid fa-shuffle' }
+            ];
+            const selectedCategories = ref(['object', 'animal']);
+            
+            // Timer State
+            const enableTimer = ref(false);
+            const timerDuration = ref(60);
+            const timeLeft = ref(60);
+            const isTimeUp = ref(false);
+            let timerInterval = null;
+
+            // Game Logic
+            const currentTeamIndex = ref(0);
+            const currentWord = ref({ word: '', category: '' });
+            const revealWord = ref(false);
+            
+            // Canvas State
+            const canvas = ref(null);
+            const ctx = ref(null);
+            const isDrawing = ref(false);
+            const currentTool = ref('brush'); 
+            const brushColor = ref('#1e293b');
+            const brushSize = ref(4);
+            const colors = ['#1e293b', '#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6'];
+            let lastX = 0, lastY = 0;
+
+            // AI Results
+            const bestGuess = ref('');
+            const topGuesses = ref([]);
+            
+            // --- Helpers ---
+            const canStart = computed(() => teams.value.length > 0 && selectedCategories.value.length > 0);
+            
+            const isCorrect = computed(() => {
+                if (!currentWord.value.word) return false;
+                const target = currentWord.value.word.toLowerCase();
+                return topGuesses.value.some(g => {
+                    const guess = g.word.toLowerCase();
+                    return guess === target || guess.includes(target) || target.includes(guess);
+                });
+            });
+
+            const isMatch = (guessWord) => {
+                const g = guessWord.toLowerCase();
+                const t = currentWord.value.word.toLowerCase();
+                return g === t || g.includes(t) || t.includes(g);
+            };
+
+            const formatTime = (seconds) => {
+                const m = Math.floor(seconds / 60);
+                const s = seconds % 60;
+                return `${m}:${s.toString().padStart(2, '0')}`;
+            };
+
+            // --- Lobby Logic ---
+            const addTeam = () => teams.value.push({ name: `Player ${teams.value.length + 1}`, score: 0 });
+            const removeTeam = (i) => teams.value.splice(i, 1);
+            
+            const toggleCategory = (id) => {
+                if (selectedCategories.value.includes(id)) {
+                    selectedCategories.value = selectedCategories.value.filter(c => c !== id);
+                } else {
+                    selectedCategories.value.push(id);
+                }
+            };
+
+            const getRandomWord = () => {
+                let pool = [];
+                if (selectedCategories.value.includes('all_play')) {
+                    Object.keys(WORD_DB).forEach(k => {
+                        if (k !== 'difficult') pool.push(...WORD_DB[k].map(w => ({ word: w, category: k })));
+                    });
+                }
+                selectedCategories.value.forEach(catId => {
+                    if (catId !== 'all_play' && WORD_DB[catId]) {
+                        pool.push(...WORD_DB[catId].map(w => ({ word: w, category: catId })));
+                    }
+                });
+                if (pool.length === 0) pool = WORD_DB.object.map(w => ({ word: w, category: 'object' }));
+                return pool[Math.floor(Math.random() * pool.length)];
+            };
+
+            const startGame = () => {
+                if(!apiKey.value) { showSettings.value = true; return; }
+                localStorage.setItem('openai_key', apiKey.value);
+                currentTeamIndex.value = 0;
+                teams.value.forEach(t => t.score = 0);
+                startTurn();
+            };
+
+            const startTurn = () => {
+                currentWord.value = getRandomWord();
+                revealWord.value = false;
+                gameState.value = 'turn_start';
+                bestGuess.value = '';
+                topGuesses.value = [];
+                isTimeUp.value = false;
+                clearInterval(timerInterval);
+            };
+
+            const nextTurn = () => {
+                currentTeamIndex.value = (currentTeamIndex.value + 1) % teams.value.length;
+                startTurn();
+            };
+            
+            const resetGame = () => {
+                if(confirm("Exit to lobby? Progress will be lost.")) {
+                    gameState.value = 'lobby';
+                    clearInterval(timerInterval);
+                }
+            };
+
+            // --- Timer Logic ---
+            const startTimer = () => {
+                if (!enableTimer.value) return;
+                timeLeft.value = timerDuration.value;
+                isTimeUp.value = false;
+                clearInterval(timerInterval);
+                
+                timerInterval = setInterval(() => {
+                    if (timeLeft.value > 0) {
+                        timeLeft.value--;
+                    } else {
+                        clearInterval(timerInterval);
+                        handleTimesUp();
+                    }
+                }, 1000);
+            };
+
+            const handleTimesUp = () => {
+                isTimeUp.value = true;
+                isDrawing.value = false;
+            };
+
+            // --- Drawing Phase Logic ---
+            const startDrawingPhase = () => {
+                gameState.value = 'drawing';
+                showMobileResults.value = false;
+                startTimer();
+                nextTick(() => {
+                    resizeCanvas();
+                    clearCanvas(); 
+                });
+            };
+
+            const resumeDrawing = () => {
+                gameState.value = 'drawing';
+                showMobileResults.value = false;
+                isTimeUp.value = false; // Unfreeze controls
+                // Timer continues/restarts logic: 
+                // Option A: Restart full timer? 
+                // Option B: No timer on retry?
+                // Let's go with B: No timer on retry to reduce stress, or A to keep it hard.
+                // Implemented: No timer restart (infinite retry time) for simplicity, 
+                // OR uncomment line below to restart timer on retry:
+                // startTimer(); 
+            };
+
+            // --- Canvas Interaction ---
+            const resizeCanvas = () => {
+                if(!canvas.value) return;
+                const parent = canvas.value.parentElement;
+                canvas.value.width = parent.clientWidth;
+                canvas.value.height = parent.clientHeight;
+            };
+
+            const getPos = (e) => {
+                const rect = canvas.value.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                return { x: clientX - rect.left, y: clientY - rect.top };
+            };
+
+            const startDrawing = (e) => {
+                if(isTimeUp.value) return; // Block input if time is up
+                if(e.cancelable) e.preventDefault();
+                isDrawing.value = true;
+                const { x, y } = getPos(e);
+                lastX = x; lastY = y;
+            };
+
+            const draw = (e) => {
+                if (!isDrawing.value || isTimeUp.value) return;
+                if(e.cancelable) e.preventDefault();
+                const { x, y } = getPos(e);
+                
+                ctx.value.beginPath();
+                ctx.value.moveTo(lastX, lastY);
+                ctx.value.lineTo(x, y);
+                
+                ctx.value.strokeStyle = currentTool.value === 'eraser' ? '#ffffff' : brushColor.value;
+                ctx.value.lineWidth = brushSize.value;
+                ctx.value.lineCap = 'round';
+                ctx.value.lineJoin = 'round';
+                ctx.value.stroke();
+                
+                lastX = x; lastY = y;
+            };
+
+            const stopDrawing = () => isDrawing.value = false;
+            
+            const clearCanvas = () => {
+                if (!ctx.value) return;
+                ctx.value.fillStyle = "white";
+                ctx.value.fillRect(0, 0, canvas.value.width, canvas.value.height);
+            };
+            
+            const setTool = (tool, color = null) => {
+                currentTool.value = tool;
+                if (color) brushColor.value = color;
+            };
+
+            // --- AI Logic ---
+            const submitDrawing = async () => {
+                isAnalyzing.value = true;
+                clearInterval(timerInterval); // Stop timer on submit
+                
+                try {
+                    const imageData = canvas.value.toDataURL('image/jpeg', 0.5);
+                    const prompt = `
+                        You are playing Pictionary.
+                        The category is: ${currentWord.value.category}.
+                        Analyze the drawing. List the top 10 things this looks like.
+                        The target word is "${currentWord.value.word}", but DO NOT just output it unless the drawing genuinely looks like it.
+                        Strictly output valid JSON: { "best_guess": "string", "guesses": ["string", "string"...] }
+                        IMPORTANT: Ensure all guesses are UNIQUE. Do not repeat the best_guess in the guesses list.
+                    `;
+
+                    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey.value}` },
+                        body: JSON.stringify({
+                            model: "gpt-4o",
+                            messages: [
+                                { role: "system", content: prompt },
+                                { role: "user", content: [{ type: "image_url", image_url: { url: imageData } }] }
+                            ],
+                            max_tokens: 150,
+                            response_format: { type: "json_object" }
+                        })
+                    });
+
+                    const data = await response.json();
+                    if(data.error) throw new Error(data.error.message);
+                    
+                    const result = JSON.parse(data.choices[0].message.content);
+                    bestGuess.value = result.best_guess;
+
+                    const allWords = [result.best_guess, ...(result.guesses || [])];
+                    const seen = new Set();
+                    const uniqueList = [];
+                    allWords.forEach(w => {
+                        const normalized = w.trim().toLowerCase();
+                        if (!seen.has(normalized)) {
+                            seen.add(normalized);
+                            uniqueList.push({ word: w });
+                        }
+                    });
+
+                    topGuesses.value = uniqueList.slice(0, 10);
+
+                    // Check result
+                    gameState.value = 'result';
+                    if (isCorrect.value) {
+                        teams.value[currentTeamIndex.value].score++;
+                        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+                    }
+
+                } catch (e) {
+                    alert("AI Error: " + e.message);
+                } finally {
+                    isAnalyzing.value = false;
+                }
+            };
+
+            onMounted(() => {
+                ctx.value = canvas.value.getContext('2d');
+                window.addEventListener('resize', resizeCanvas);
+            });
+
+            return {
+                gameState, showSettings, apiKey, teams, availableCategories, selectedCategories,
+                addTeam, removeTeam, toggleCategory, canStart, startGame, resetGame,
+                currentTeamIndex, currentWord, revealWord, startDrawingPhase, nextTurn, resumeDrawing,
+                canvas, startDrawing, draw, stopDrawing, clearCanvas, setTool, currentTool, brushColor, brushSize, colors,
+                submitDrawing, isAnalyzing, bestGuess, topGuesses, isCorrect, showMobileResults, isMatch,
+                // Timer exports
+                enableTimer, timerDuration, timeLeft, isTimeUp, formatTime
+            };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
